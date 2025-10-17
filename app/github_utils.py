@@ -180,16 +180,45 @@ def enable_pages(repo_name: str, branch: str = "main"):
     data = {"source": {"branch": branch, "path": "/"}}
     try:
         r = httpx.post(url, headers=headers, json=data, timeout=30.0)
-        if r.status_code in (201, 204):
-            print("Pages enabled for", repo_name)
+        if r.status_code in (201, 202, 204):
+            # 202 indicates Pages is being provisioned/building
+            print("Pages enable request accepted for", repo_name, "status:", r.status_code)
             return True
         else:
-            # GitHub sometimes returns 202 while building; treat 202 as success to allow polling
             print("Pages API returned:", r.status_code, r.text)
             return False
     except Exception as e:
         print("Failed to call Pages API:", e)
         return False
+
+def wait_for_pages(repo_name: str, timeout_seconds: int = 120) -> str | None:
+    """
+    Poll GitHub Pages status until ready or timeout. Returns the Pages URL if available.
+    """
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    import time
+    start = time.time()
+    pages_url = f"{BASE_URL}/repos/{USERNAME}/{repo_name}/pages"
+    while time.time() - start < timeout_seconds:
+        try:
+            r = httpx.get(pages_url, headers=headers, timeout=15.0)
+            if r.status_code == 200:
+                info = r.json()
+                html_url = info.get("html_url")
+                status = info.get("status")  # e.g., 'built', 'building'
+                if html_url and (status in (None, "built")):
+                    return html_url
+                # fallthrough to wait if building
+            elif r.status_code == 404:
+                # Not ready yet
+                pass
+        except Exception:
+            pass
+        time.sleep(3)
+    return None
 
 """
 The repository is now created with an MIT license by default using
