@@ -10,6 +10,11 @@ from app.github_utils import (
 )
 from app.notify import notify_evaluation_server
 from app.github_utils import create_or_update_binary_file
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+
+
 
 load_dotenv()
 USER_SECRET = os.getenv("USER_SECRET")
@@ -17,6 +22,7 @@ USERNAME = os.getenv("GITHUB_USERNAME")
 PROCESSED_PATH = "/tmp/processed_requests.json"
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # === Persistence for processed requests ===
 def load_processed():
@@ -161,3 +167,11 @@ async def receive_request(request: Request, background_tasks: BackgroundTasks):
 @app.get("/")
 async def root():
     return {"message": "Welcome to the API!"}
+
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return FileResponse("static/favicon.ico")
+
+
