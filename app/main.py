@@ -6,7 +6,6 @@ from app.github_utils import (
     create_repo,
     create_or_update_file,
     enable_pages,
-    generate_mit_license,
     get_file_text,
     get_latest_commit_sha,
 )
@@ -98,8 +97,7 @@ def process_request(data):
     for fname, content in files.items():
         create_or_update_file(repo, fname, content, f"Add/Update {fname}")
 
-    mit_text = generate_mit_license()
-    create_or_update_file(repo, "LICENSE", mit_text, "Add MIT license")
+    # MIT license is automatically created by GitHub API with license_template: "mit"
 
     # Step 6: Handle GitHub Pages enablement or reuse existing
     if round_num == 1:
