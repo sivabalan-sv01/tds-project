@@ -192,16 +192,15 @@ def enable_pages(repo_name: str, branch: str = "main"):
         return False
 
 def wait_for_pages(repo_name: str, timeout_seconds: int = 120) -> str | None:
-    """
-    Poll GitHub Pages status until ready or timeout. Returns the Pages URL if available.
-    """
+    """Backward compatible poll using env USERNAME. Prefer wait_for_pages_for_repo."""
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github.v3+json",
     }
     import time
     start = time.time()
-    pages_url = f"{BASE_URL}/repos/{USERNAME}/{repo_name}/pages"
+    owner = USERNAME
+    pages_url = f"{BASE_URL}/repos/{owner}/{repo_name}/pages"
     while time.time() - start < timeout_seconds:
         try:
             r = httpx.get(pages_url, headers=headers, timeout=15.0)

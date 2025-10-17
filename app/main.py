@@ -11,6 +11,7 @@ from app.github_utils import (
 )
 from app.notify import notify_evaluation_server
 from app.github_utils import create_or_update_binary_file
+from app.github_utils import enable_pages_for_repo, wait_for_pages_for_repo
 from app.github_utils import wait_for_pages
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -102,14 +103,14 @@ def process_request(data):
 
     # Step 6: Handle GitHub Pages enablement or reuse existing
     if round_num == 1:
-        pages_ok = enable_pages(task_id)
+        pages_ok = enable_pages_for_repo(repo)
         pages_url = None
         if pages_ok:
-            pages_url = wait_for_pages(task_id) or f"https://{USERNAME}.github.io/{task_id}/"
+            pages_url = wait_for_pages_for_repo(repo) or f"https://{USERNAME}.github.io/{task_id}/"
     else:
         # For round 2 or later, Pages likely already exist; still try to fetch status
         pages_ok = True
-        pages_url = wait_for_pages(task_id) or f"https://{USERNAME}.github.io/{task_id}/"
+        pages_url = wait_for_pages_for_repo(repo) or f"https://{USERNAME}.github.io/{task_id}/"
 
     commit_sha = get_latest_commit_sha(repo)
 
