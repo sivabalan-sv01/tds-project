@@ -156,3 +156,8 @@ async def receive_request(request: Request, background_tasks: BackgroundTasks):
 
     # Immediate HTTP 200 acknowledgment
     return {"status": "accepted", "note": f"processing round {data['round']} started"}
+
+#root endpoint to display a welcome message
+@app.get("/")
+async def root():
+    return {"message": "Welcome to the API!"}
