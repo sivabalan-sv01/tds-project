@@ -1,8 +1,7 @@
 # app/github_utils.py
 import os
-from github import Github
-from github import GithubException
 import httpx
+import base64
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -10,48 +9,102 @@ load_dotenv()
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 USERNAME = os.getenv("GITHUB_USERNAME")
-g = Github(GITHUB_TOKEN)
+BASE_URL = "https://api.github.com"
 
 def create_repo(repo_name: str, description: str = ""):
     """
     Create a public repository with the given name.
     """
-    user = g.get_user()
-    # if repo exists, return it
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    # Check if repo exists
+    url = f"{BASE_URL}/repos/{USERNAME}/{repo_name}"
     try:
-        repo = user.get_repo(repo_name)
-        print("Repo already exists:", repo.full_name)
-        return repo
-    except GithubException:
+        r = httpx.get(url, headers=headers, timeout=30.0)
+        if r.status_code == 200:
+            print("Repo already exists:", f"{USERNAME}/{repo_name}")
+            return {"full_name": f"{USERNAME}/{repo_name}", "name": repo_name}
+    except Exception:
         pass
 
-    repo = user.create_repo(
-        name=repo_name,
-        description=description,
-        private=False,
-        auto_init=False
-    )
-    print("Created repo:", repo.full_name)
-    return repo
+    # Create new repo
+    url = f"{BASE_URL}/user/repos"
+    data = {
+        "name": repo_name,
+        "description": description,
+        "private": False,
+        "auto_init": True,
+        "license_template": "mit"
+    }
+    try:
+        r = httpx.post(url, headers=headers, json=data, timeout=30.0)
+        if r.status_code == 201:
+            repo_data = r.json()
+            print("Created repo:", repo_data["full_name"])
+            return repo_data
+        else:
+            raise Exception(f"Failed to create repo: {r.status_code} {r.text}")
+    except Exception as e:
+        print(f"Error creating repo: {e}")
+        raise
 
 def create_or_update_file(repo, path: str, content: str, message: str):
     """
     Create a file or update if it already exists.
     """
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    # Get repo name from repo object (could be dict or object)
+    if isinstance(repo, dict):
+        repo_name = repo["name"]
+        full_name = repo["full_name"]
+    else:
+        repo_name = repo.name
+        full_name = repo.full_name
+    
+    # Encode content to base64
+    content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+    
+    url = f"{BASE_URL}/repos/{full_name}/contents/{path}"
+    
     try:
         # Try to get file to see if exists
-        current = repo.get_contents(path)
-        sha = current.sha
-        repo.update_file(path, message, content, sha)
-        print(f"Updated {path} in {repo.full_name}")
-    except GithubException as e:
-        # If 404 (not found) then create
-        if e.status == 404:
-            repo.create_file(path, message, content)
-            print(f"Created {path} in {repo.full_name}")
+        r = httpx.get(url, headers=headers, timeout=30.0)
+        if r.status_code == 200:
+            # File exists, update it
+            file_data = r.json()
+            data = {
+                "message": message,
+                "content": content_b64,
+                "sha": file_data["sha"]
+            }
+            r = httpx.put(url, headers=headers, json=data, timeout=30.0)
+            if r.status_code == 200:
+                print(f"Updated {path} in {full_name}")
+            else:
+                raise Exception(f"Failed to update file: {r.status_code} {r.text}")
+        elif r.status_code == 404:
+            # File doesn't exist, create it
+            data = {
+                "message": message,
+                "content": content_b64
+            }
+            r = httpx.put(url, headers=headers, json=data, timeout=30.0)
+            if r.status_code == 201:
+                print(f"Created {path} in {full_name}")
+            else:
+                raise Exception(f"Failed to create file: {r.status_code} {r.text}")
         else:
-            # some other error
-            raise
+            raise Exception(f"Failed to check file: {r.status_code} {r.text}")
+    except Exception as e:
+        print(f"Error creating/updating file {path}: {e}")
+        raise
 
 
 def create_or_update_binary_file(repo, path: str, binary_content, commit_message: str):
@@ -59,31 +112,58 @@ def create_or_update_binary_file(repo, path: str, binary_content, commit_message
     Create or update a binary file in the repository.
     This function handles binary data like images directly without encoding/decoding.
     """
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    # Get repo name from repo object (could be dict or object)
+    if isinstance(repo, dict):
+        repo_name = repo["name"]
+        full_name = repo["full_name"]
+    else:
+        repo_name = repo.name
+        full_name = repo.full_name
+    
+    # Encode binary content to base64
+    content_b64 = base64.b64encode(binary_content).decode('utf-8')
+    
+    url = f"{BASE_URL}/repos/{full_name}/contents/{path}"
+    
     try:
         # Try to get file to see if exists
-        try:
-            current = repo.get_contents(path)
-            # Update existing file
-            repo.update_file(
-                path=path,
-                message=commit_message,
-                content=binary_content,
-                sha=current.sha
-            )
-            print(f"Updated binary file {path} in {repo.full_name}")
-        except GithubException as e:
-            # If file doesn't exist, create it
-            if e.status == 404:
-                repo.create_file(
-                    path=path,
-                    message=commit_message,
-                    content=binary_content
-                )
-                print(f"Created binary file {path} in {repo.full_name}")
+        r = httpx.get(url, headers=headers, timeout=30.0)
+        if r.status_code == 200:
+            # File exists, update it
+            file_data = r.json()
+            data = {
+                "message": commit_message,
+                "content": content_b64,
+                "sha": file_data["sha"]
+            }
+            r = httpx.put(url, headers=headers, json=data, timeout=30.0)
+            if r.status_code == 200:
+                print(f"Updated binary file {path} in {full_name}")
+                return True
             else:
-                # some other error
-                raise
-        return True
+                print(f"Failed to update binary file: {r.status_code} {r.text}")
+                return False
+        elif r.status_code == 404:
+            # File doesn't exist, create it
+            data = {
+                "message": commit_message,
+                "content": content_b64
+            }
+            r = httpx.put(url, headers=headers, json=data, timeout=30.0)
+            if r.status_code == 201:
+                print(f"Created binary file {path} in {full_name}")
+                return True
+            else:
+                print(f"Failed to create binary file: {r.status_code} {r.text}")
+                return False
+        else:
+            print(f"Failed to check binary file: {r.status_code} {r.text}")
+            return False
     except Exception as e:
         print(f"Error creating/updating binary file {path}: {e}")
         return False
@@ -92,13 +172,16 @@ def enable_pages(repo_name: str, branch: str = "main"):
     """
     Enable GitHub Pages via REST API; expects GITHUB_USERNAME in env.
     """
-    url = f"https://api.github.com/repos/{USERNAME}/{repo_name}/pages"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    url = f"{BASE_URL}/repos/{USERNAME}/{repo_name}/pages"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
     data = {"source": {"branch": branch, "path": "/"}}
     try:
         r = httpx.post(url, headers=headers, json=data, timeout=30.0)
         if r.status_code in (201, 204):
-            print("✅ Pages enabled for", repo_name)
+            print("Pages enabled for", repo_name)
             return True
         else:
             # GitHub sometimes returns 202 while building; treat 202 as success to allow polling
@@ -108,13 +191,7 @@ def enable_pages(repo_name: str, branch: str = "main"):
         print("Failed to call Pages API:", e)
         return False
 
-def generate_mit_license(owner_name=None):
-    year = datetime.utcnow().year
-    owner = owner_name or USERNAME or "Owner"
-    return f"""MIT License
-
-Copyright (c) {year} {owner}
-
-Permission is hereby granted, free of charge, to any person obtaining a copy...
-[Full MIT license text omitted here for brevity — replace in production with full license text]
+"""
+The repository is now created with an MIT license by default using
+GitHub's license_template parameter at creation time.
 """

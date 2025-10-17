@@ -143,23 +143,41 @@ You are a professional web developer assistant.
 """
 
     try:
-        response = client.responses.create(
-            model="gpt-5",
-            input=[
+        import requests
+        token = OPENAI_API_KEY
+        if not token:
+            raise RuntimeError("OPENAI_API_KEY is not set in environment")
+
+        url = "https://aipipe.org/openrouter/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": os.getenv("OPENROUTER_MODEL", "openai/gpt-4.1-nano"),
+            "messages": [
                 {"role": "system", "content": "You are a helpful coding assistant that outputs runnable web apps."},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        text = response.output_text or ""
-        print("✅ Generated code using new OpenAI Responses API.")
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        if resp.status_code != 200:
+            raise RuntimeError(f"AIPipe/OpenRouter request failed: {resp.status_code} {resp.text}")
+        data = resp.json()
+        text = ""
+        try:
+            text = data["choices"][0]["message"]["content"] or ""
+        except Exception:
+            text = str(data)
+        print("Generated code using AIPipe/OpenRouter chat completions.")
     except Exception as e:
-        print("⚠ OpenAI API failed, using fallback HTML instead:", e)
+        print("OpenAI/AIPipe API failed, using fallback HTML instead:", e)
         text = f"""
 <html>
   <head><title>Fallback App</title></head>
   <body>
     <h1>Hello (fallback)</h1>
-    <p>This app was generated as a fallback because OpenAI failed. Brief: {brief}</p>
+    <p>This app was generated as a fallback because OpenAI/AIPipe failed. Brief: {brief}</p>
   </body>
 </html>
 
