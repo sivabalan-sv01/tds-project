@@ -219,6 +219,67 @@ def wait_for_pages(repo_name: str, timeout_seconds: int = 120) -> str | None:
         time.sleep(3)
     return None
 
+# --- Owner-aware Pages helpers ---
+def _owner_repo_from_repo(repo) -> tuple[str, str | None]:
+    """Extract (owner, name) from a repo dict/object, with env fallback for owner."""
+    if isinstance(repo, dict):
+        full_name = repo.get("full_name")
+        name = repo.get("name")
+    else:
+        full_name = getattr(repo, "full_name", None)
+        name = getattr(repo, "name", None)
+    if full_name and "/" in full_name:
+        owner, nm = full_name.split("/", 1)
+        return owner, nm
+    return USERNAME, name
+
+def enable_pages_for_repo(repo, branch: str = "main") -> bool:
+    """Enable GitHub Pages using the repo's actual owner/name."""
+    owner, name = _owner_repo_from_repo(repo)
+    url = f"{BASE_URL}/repos/{owner}/{name}/pages"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    data = {"source": {"branch": branch, "path": "/"}}
+    try:
+        r = httpx.post(url, headers=headers, json=data, timeout=30.0)
+        if r.status_code in (201, 202, 204):
+            print("Pages enable request accepted for", f"{owner}/{name}", "status:", r.status_code)
+            return True
+        else:
+            print("Pages API returned:", r.status_code, r.text)
+            return False
+    except Exception as e:
+        print("Failed to call Pages API:", e)
+        return False
+
+def wait_for_pages_for_repo(repo, timeout_seconds: int = 120) -> str | None:
+    """Poll Pages status using owner/name from repo; return html_url when built or None on timeout."""
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    import time
+    start = time.time()
+    owner, name = _owner_repo_from_repo(repo)
+    pages_url = f"{BASE_URL}/repos/{owner}/{name}/pages"
+    while time.time() - start < timeout_seconds:
+        try:
+            r = httpx.get(pages_url, headers=headers, timeout=15.0)
+            if r.status_code == 200:
+                info = r.json()
+                html_url = info.get("html_url")
+                status = info.get("status")
+                if html_url and (status in (None, "built")):
+                    return html_url
+            elif r.status_code == 404:
+                pass
+        except Exception:
+            pass
+        time.sleep(3)
+    return None
+
 """
 The repository is now created with an MIT license by default using
 GitHub's license_template parameter at creation time.
