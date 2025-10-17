@@ -7,6 +7,8 @@ from app.github_utils import (
     create_or_update_file,
     enable_pages,
     generate_mit_license,
+    get_file_text,
+    get_latest_commit_sha,
 )
 from app.notify import notify_evaluation_server
 from app.github_utils import create_or_update_binary_file
@@ -46,15 +48,15 @@ def process_request(data):
     saved_attachments = decode_attachments(attachments)
     print("Attachments saved:", saved_attachments)
 
-    # Optional: fetch previous README for round 2
+    # Step 1: Get or create repo early so we can read previous README if needed
+    repo = create_repo(task_id, description=f"Auto-generated app for task: {data['brief']}")
+
+    # Optional: fetch previous README for round 2 using REST helper
     prev_readme = None
     if round_num == 2:
-        try:
-            readme = repo.get_contents("README.md")
-            prev_readme = readme.decoded_content.decode("utf-8", errors="ignore")
+        prev_readme = get_file_text(repo, "README.md")
+        if prev_readme:
             print("📖 Loaded previous README for round 2 context.")
-        except Exception:
-            prev_readme = None
 
     gen = generate_app_code(
         data["brief"],
@@ -66,9 +68,6 @@ def process_request(data):
 
     files = gen.get("files", {})
     saved_info = gen.get("attachments", [])
-
-    # Step 1: Get or create repo
-    repo = create_repo(task_id, description=f"Auto-generated app for task: {data['brief']}")
 
     # Step 2: Round-specific logic
     if round_num == 1:
@@ -103,7 +102,7 @@ def process_request(data):
     create_or_update_file(repo, "LICENSE", mit_text, "Add MIT license")
 
     # Step 6: Handle GitHub Pages enablement or reuse existing
-    if data["round"] == 1:
+    if round_num == 1:
         pages_ok = enable_pages(task_id)
         pages_url = f"https://{USERNAME}.github.io/{task_id}/" if pages_ok else None
     else:
@@ -111,17 +110,14 @@ def process_request(data):
         pages_ok = True
         pages_url = f"https://{USERNAME}.github.io/{task_id}/"
 
-    try:
-        commit_sha = repo.get_commits()[0].sha
-    except Exception:
-        commit_sha = None
+    commit_sha = get_latest_commit_sha(repo)
 
     payload = {
         "email": data["email"],
         "task": data["task"],
         "round": round_num,
         "nonce": data["nonce"],
-        "repo_url": repo.html_url,
+        "repo_url": (repo.get("html_url") if isinstance(repo, dict) else getattr(repo, "html_url", None)),
         "commit_sha": commit_sha,
         "pages_url": pages_url,
     }

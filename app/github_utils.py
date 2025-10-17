@@ -195,3 +195,61 @@ def enable_pages(repo_name: str, branch: str = "main"):
 The repository is now created with an MIT license by default using
 GitHub's license_template parameter at creation time.
 """
+
+# -------------------------
+# Read helpers (REST-based)
+# -------------------------
+
+def _repo_full_name(repo) -> str:
+    """Accepts a dict (from create_repo) or an object with full_name attr."""
+    if isinstance(repo, dict):
+        return repo.get("full_name") or f"{USERNAME}/{repo.get('name')}"
+    return getattr(repo, "full_name")
+
+
+def get_file_text(repo, path: str) -> str | None:
+    """
+    Fetch a text file's content via GitHub Contents API and decode base64.
+    Returns None if not found or on error.
+    """
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    full_name = _repo_full_name(repo)
+    url = f"{BASE_URL}/repos/{full_name}/contents/{path}"
+    try:
+        r = httpx.get(url, headers=headers, timeout=30.0)
+        if r.status_code == 200:
+            data = r.json()
+            content_b64 = data.get("content", "")
+            try:
+                # GitHub may include newlines; strip before decode
+                decoded = base64.b64decode(content_b64.encode("utf-8")).decode(
+                    "utf-8", errors="ignore"
+                )
+                return decoded
+            except Exception:
+                return None
+        return None
+    except Exception:
+        return None
+
+
+def get_latest_commit_sha(repo) -> str | None:
+    """Return the latest commit SHA on the default branch via REST API."""
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    full_name = _repo_full_name(repo)
+    url = f"{BASE_URL}/repos/{full_name}/commits?per_page=1"
+    try:
+        r = httpx.get(url, headers=headers, timeout=30.0)
+        if r.status_code == 200:
+            items = r.json()
+            if isinstance(items, list) and items:
+                return items[0].get("sha")
+        return None
+    except Exception:
+        return None
