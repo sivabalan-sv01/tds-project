@@ -130,16 +130,23 @@ You are a professional web developer assistant.
 {checks or []}
 
 ### Output format rules:
-1. Produce a complete web app (HTML/JS/CSS inline if needed) satisfying the brief.
-2. Output must contain **two parts only**:
-   - index.html (main code)
-   - README.md (starts after a line containing exactly: ---README.md---)
-3. README.md must include:
-   - Overview
-   - Setup
-   - Usage
+1. Produce a complete single-file web application that satisfies the brief requirements.
+2. Output must contain **exactly two parts**:
+   - First part: Complete index.html code (including DOCTYPE, html, head, body tags)
+   - Second part: README.md content (starts after a line containing exactly: ---README.md---)
+3. The index.html must be a SINGLE FILE containing:
+   - All HTML structure
+   - All CSS styles (inline in <style> tags or inline styles)
+   - All JavaScript logic (inline in <script> tags)
+   - Complete functionality to fulfill the brief requirements
+4. README.md must include:
+   - Overview of the application
+   - Setup instructions (just open index.html in browser)
+   - Usage instructions
    - If Round 2, describe improvements made from previous version.
-4. Do not include any commentary outside code or README.
+5. Do not include any commentary outside the HTML code or README content.
+6. The index.html must be completely self-contained - no external dependencies except CDN links if specifically requested.
+7. Use the separator line "---README.md---" exactly as shown to separate the two parts.
 """
 
     try:
@@ -185,13 +192,42 @@ You are a professional web developer assistant.
 {generate_readme_fallback(brief, checks, attachments_meta, round_num)}
 """
 
+    # Parse AI response to separate index.html and README.md
     if "---README.md---" in text:
-        code_part, readme_part = text.split("---README.md---", 1)
-        code_part = _strip_code_block(code_part)
-        readme_part = _strip_code_block(readme_part)
+        parts = text.split("---README.md---", 1)
+        if len(parts) == 2:
+            code_part = _strip_code_block(parts[0].strip())
+            readme_part = _strip_code_block(parts[1].strip())
+        else:
+            # Fallback if split doesn't work as expected
+            code_part = _strip_code_block(text)
+            readme_part = generate_readme_fallback(brief, checks, attachments_meta, round_num)
     else:
+        # No separator found, assume entire response is HTML code
         code_part = _strip_code_block(text)
         readme_part = generate_readme_fallback(brief, checks, attachments_meta, round_num)
 
+    # Ensure index.html has proper HTML structure
+    if not code_part.strip().startswith(('<', '<!DOCTYPE', '<html')):
+        # Wrap in basic HTML structure if needed
+        code_part = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generated App</title>
+</head>
+<body>
+{code_part}
+</body>
+</html>"""
+
+    # Validate content lengths
+    if len(code_part.strip()) < 50:
+        print("⚠️ Warning: Generated HTML seems too short")
+    if len(readme_part.strip()) < 50:
+        print("⚠️ Warning: Generated README seems too short")
+
     files = {"index.html": code_part, "README.md": readme_part}
+    print(f"✅ Parsed AI response: HTML ({len(code_part)} chars), README ({len(readme_part)} chars)")
     return {"files": files, "attachments": saved}

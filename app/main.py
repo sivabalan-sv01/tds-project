@@ -70,10 +70,22 @@ def process_request(data):
     files = gen.get("files", {})
     saved_info = gen.get("attachments", [])
 
+    # Validate AI response contains required files
+    if not files or "index.html" not in files or "README.md" not in files:
+        print("❌ AI response missing required files (index.html or README.md)")
+        return
+
+    # Validate content is not empty
+    if not files["index.html"].strip() or not files["README.md"].strip():
+        print("❌ AI response contains empty files")
+        return
+
+    print("✅ AI response validated - contains index.html and README.md")
+
     # Step 2: Round-specific logic
     if round_num == 1:
         print("🏗 Round 1: Building fresh repo...")
-        # Add attachments
+        # Add attachments first
         for att in saved_info:
             path = att["name"]
             try:
@@ -90,14 +102,23 @@ def process_request(data):
                 print("⚠ Attachment commit failed:", e)
     else:
         print("🔁 Round 2: Revising existing repo...")
-        # For round 2, update existing code and README
-        # Commit new files on top of existing repo
-        for fname, content in files.items():
-            create_or_update_file(repo, fname, content, f"Update {fname} for round 2")
+        # For round 2, also add any new attachments
+        for att in saved_info:
+            path = att["name"]
+            try:
+                with open(att["path"], "rb") as f:
+                    content_bytes = f.read()
+                if att["mime"].startswith("text") or att["name"].endswith((".md", ".csv", ".json", ".txt")):
+                    text = content_bytes.decode("utf-8", errors="ignore")
+                    create_or_update_file(repo, path, text, f"Update attachment {path} for round 2")
+            except Exception as e:
+                print("⚠ Attachment update failed:", e)
 
-    # Step 3: Common steps for both rounds
+    # Step 3: Commit AI-generated files (index.html and README.md)
     for fname, content in files.items():
-        create_or_update_file(repo, fname, content, f"Add/Update {fname}")
+        commit_msg = f"Add {fname}" if round_num == 1 else f"Update {fname} for round 2"
+        create_or_update_file(repo, fname, content, commit_msg)
+        print(f"✅ Committed {fname} ({len(content)} chars)")
 
     # MIT license is automatically created by GitHub API with license_template: "mit"
 
