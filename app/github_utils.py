@@ -20,6 +20,15 @@ def create_repo(repo_name: str, description: str = ""):
         "Accept": "application/vnd.github.v3+json"
     }
     
+    # Sanitize description for GitHub API
+    if description:
+        # Remove control characters and limit length
+        import re
+        description = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', description)  # Remove control chars
+        description = description.strip()
+        if len(description) > 350:
+            description = description[:347] + "..."
+    
     # Check if repo exists
     url = f"{BASE_URL}/repos/{USERNAME}/{repo_name}"
     try:

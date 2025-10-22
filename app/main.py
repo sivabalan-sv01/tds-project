@@ -50,7 +50,13 @@ def process_request(data):
     print("Attachments saved:", saved_attachments)
 
     # Step 1: Get or create repo early so we can read previous README if needed
-    repo = create_repo(task_id, description=f"Auto-generated app for task: {data['brief']}")
+    # Sanitize description for GitHub API (remove newlines, limit length)
+    brief_summary = data['brief'].replace('\n', ' ').replace('\r', ' ').strip()
+    if len(brief_summary) > 300:  # Leave room for prefix
+        brief_summary = brief_summary[:300] + "..."
+    description = f"Auto-generated app for task: {brief_summary}"
+    
+    repo = create_repo(task_id, description=description)
 
     # Optional: fetch previous README for round 2 using REST helper
     prev_readme = None
